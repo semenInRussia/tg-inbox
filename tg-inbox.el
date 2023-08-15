@@ -31,6 +31,19 @@
 (require 'subr-x)  ; for `thread-last'
 (defvar url-http-end-of-headers)
 
+(defvar tg-inbox-sync-time-file
+  (thread-last
+    ;; this file name
+    (cond (load-in-progress
+           load-file-name)
+          (byte-compile-current-file
+           byte-compile-current-file)
+          (t (buffer-file-name)))
+    ;; this directory
+    file-name-directory
+    ;; the target filename
+    (expand-file-name "tg-inbox-sync-time.txt"))
+  "The filename where `tg-inbox' stores the time of the last sync.")
 
 (defvar tg-inbox-bot-token "6580506179:AAGf7VtyNWy1GGseeXBdIwa6mFpziIWsi_U"
   "Token of the bot on which you send your tasks.")
@@ -53,7 +66,42 @@ Insert these messages to the end of the current buffer."
   (insert "* TODO " msg)
   (newline))
 
-;;; The Main Backend Function - get new messages
+
+;;; Telegram API Internals
+
+(defun tg-inbox--is-new-msg-p (msg)
+  "Return non-nil if a given Telegram MSG is sent after the last sync time.
+
+MSG is an alist which was parsed from JSON returned with the Telegram API method
+getUpdates"
+  ;; (message
+  ;;  (message_id . 1)
+  ;;  (from
+  ;;   (id . 664167507)
+  ;;   (is_bot . :false)
+  ;;   (first_name . "Semen")
+  ;;   (last_name . "Khramtsov")
+  ;;   (username . "semenInRussia")
+  ;;   (language_code . "en"))
+  ;;  (chat
+  ;;   (id . 664167507)
+  ;;   (first_name . "Semen")
+  ;;   (last_name . "Khramtsov")
+  ;;   (username . "semenInRussia")
+  ;;   (type . "private"))
+  ;;  (date . 1692105224)
+  ;;  (text . "/start")
+  ;;  (entities .
+  ;;            [((offset . 0)
+  ;;              (length . 6)
+  ;;              (type . "bot_command"))]))
+  (let ((last-sync-time
+         (with-temp-buffer
+           (insert-file-contents tg-inbox-sync-time-file)
+           (string-to-number
+            (buffer-string)))))
+    (> (alist-get 'date msg)
+       last-sync-time)))
 
 (defun tg-inbox--new-messages ()
   "Return a list of new messages within the Telegram bot."
@@ -61,10 +109,11 @@ Insert these messages to the end of the current buffer."
     (tg-inbox--fetch-json "getUpdates")
     (alist-get 'result)
     (mapcar 'cadr)
-    ;; TODO remove messages after the last processed message
-    ;; (seq-filter
-    ;;  (lambda (ev)
-    ;;    (pp ev)))
+    ;; functions on messages
+    (seq-filter
+     #'tg-inbox--is-new-msg-p)
+    tg-inbox--change-last-sync-time
+    ;;
     (mapcar
      (apply-partially #'alist-get 'text))
     ;; remove nil-values, text is nil if the message is emoji or file
@@ -73,8 +122,6 @@ Insert these messages to the end of the current buffer."
     (mapcar #'string-trim)
     ;; also remove /start command
     (remove "/start")))
-
-;;; Telegram API Internals
 
 (defun tg-inbox--fetch-json (method)
   "Fetch a JSON from the Telegram API for tg-inbox-bot with a given METHOD."
@@ -91,13 +138,37 @@ Insert these messages to the end of the current buffer."
           tg-inbox-bot-token
           method))
 
-;;; Emacs Internals
+;;; Internals
 
 (defun tg-inbox--ensure-empty-line ()
   "Ensure that this line is empty, it it's true insert new line."
   (when (> (point) (line-beginning-position))
     ;; when the cursor isn't located at the beginning of line
     (newline)))
+
+(defun tg-inbox--change-last-sync-time (msgs)
+  "Accept Telegram MSGS and change the `tg-inbox-sync-time-file'.
+
+Note that it is one of functions which will be applied to list of MSGS and the
+result of this function will be used after"
+  (when msgs
+    (with-temp-buffer
+      ;; insert the sync time to this temp buffer
+      (thread-last
+        (last msgs)
+        car
+        (alist-get 'date)
+        number-to-string
+        insert)
+      ;; write new info
+      (write-region (point-min) (point-max)
+                    tg-inbox-sync-time-file)))
+  msgs)
+
+(unless (file-exists-p tg-inbox-sync-time-file)
+  (find-file-text tg-inbox-sync-time-file)
+  (save-buffer)
+  (kill-buffer (find-file-text tg-inbox-sync-time-file)))
 
 (provide 'tg-inbox)
 ;;; tg-inbox.el ends here
