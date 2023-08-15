@@ -43,8 +43,8 @@ Insert these messages to the end of the current buffer."
   (interactive)
   (goto-char (point-max))
   (tg-inbox--ensure-empty-line)
-  (mapcar #'tg-inbox--insert-task-msg
-          (tg-inbox--new-messages)))
+  (mapc #'tg-inbox--insert-task-msg
+        (tg-inbox--new-messages)))
 
 (defun tg-inbox--insert-task-msg (msg)
   "Insert an `org-mode' heading as an inbox task with a MSG."
@@ -66,7 +66,11 @@ Insert these messages to the end of the current buffer."
     (mapcar
      (apply-partially #'alist-get 'text))
     ;; remove nil-values, text is nil if the message is emoji or file
-    (seq-filter #'identity)))
+    (seq-filter #'identity)
+    ;; remove useless whitespaces around messages
+    (mapcar #'string-trim)
+    ;; also remove /start command
+    (remove "/start")))
 
 ;;; Telegram API Internals
 
