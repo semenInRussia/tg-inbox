@@ -29,6 +29,7 @@
 ;;; Code:
 
 (require 'subr-x)  ; for `thread-last'
+(defvar url-http-end-of-headers)
 
 
 (defvar tg-inbox-bot-token "6580506179:AAGf7VtyNWy1GGseeXBdIwa6mFpziIWsi_U"
