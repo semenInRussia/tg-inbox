@@ -42,10 +42,11 @@
 
 Insert these messages to the end of the current buffer."
   (interactive)
-  (goto-char (point-max))
-  (tg-inbox--ensure-empty-line)
-  (mapc #'tg-inbox--insert-task-msg
-        (tg-inbox--new-messages)))
+  (save-excursion
+    (goto-char (point-max))
+    (tg-inbox--ensure-empty-line)
+    (mapc #'tg-inbox--insert-task-msg
+          (tg-inbox--new-messages))))
 
 (defun tg-inbox--insert-task-msg (msg)
   "Insert an `org-mode' heading as an inbox task with a MSG."
