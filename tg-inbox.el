@@ -48,6 +48,24 @@
 (defvar tg-inbox-bot-token "6580506179:AAGf7VtyNWy1GGseeXBdIwa6mFpziIWsi_U"
   "Token of the bot on which you send your tasks.")
 
+(defvar tg-inbox-msgs '()
+  "List of just accepted messages from the Telegram API.
+
+It will be updated after every `tg-inbox-new-messages' call.  You can use this
+variable inside `tg-inbox-sync-post-hook'")
+
+(defvar tg-inbox-sync-post-hook '(tg-inbox--change-last-sync-time)
+  "List of functions which will be called after `tg-inbox-sync'.
+
+Inside this function you can use variable `tg-inbox-msgs' which have
+list of messages alists.")
+
+(defvar tg-inbox-sync-pre-hook '()
+  "List of functions which will be called before `tg-inbox-sync'.")
+
+(defvar tg-inbox-all-msgs '()
+  "Like `tg-inbox-msgs', but here filtering is not happened.")
+
 ;;; `org-mode' functions
 
 (defun tg-inbox-sync ()
@@ -58,14 +76,16 @@ Insert these messages to the end of the current buffer."
   (save-excursion
     (goto-char (point-max))
     (tg-inbox--ensure-empty-line)
+    (run-hooks 'tg-inbox-sync-pre-hook)
     (mapc #'tg-inbox--insert-task-msg
-          (tg-inbox--new-messages))))
+          (tg-inbox--text-msgs))
+    (run-hooks 'tg-inbox-sync-post-hook)
+    tg-inbox-msgs))
 
 (defun tg-inbox--insert-task-msg (msg)
   "Insert an `org-mode' heading as an inbox task with a MSG."
   (insert "* TODO " msg)
   (newline))
-
 
 ;;; Telegram API Internals
 
@@ -104,16 +124,25 @@ getUpdates"
        last-sync-time)))
 
 (defun tg-inbox--new-messages ()
-  "Return a list of new messages within the Telegram bot."
+  "Return a list of new messages within the Telegram bot.
+
+Note that each of result messages is alist which is parsed JSON from getUpdates
+Telgram API method answer"
   (thread-last
     (tg-inbox--fetch-json "getUpdates")
     (alist-get 'result)
     (mapcar 'cadr)
-    ;; functions on messages
+    ;; change the variable for hooks
+    (setq tg-inbox-all-msgs)
     (seq-filter
      #'tg-inbox--is-new-msg-p)
-    tg-inbox--change-last-sync-time
-    ;;
+    ;; change the variable for hooks
+    (setq tg-inbox-msgs)))
+
+(defun tg-inbox--text-msgs ()
+  "Return a list of strings: new messages within the Telegram bot."
+  (thread-last
+    (tg-inbox--new-messages)
     (mapcar
      (apply-partially #'alist-get 'text))
     ;; remove nil-values, text is nil if the message is emoji or file
@@ -146,24 +175,23 @@ getUpdates"
     ;; when the cursor isn't located at the beginning of line
     (newline)))
 
-(defun tg-inbox--change-last-sync-time (msgs)
-  "Accept Telegram MSGS and change the `tg-inbox-sync-time-file'.
+(defun tg-inbox--change-last-sync-time ()
+  "Accept Telegram msgs and change the `tg-inbox-sync-time-file'.
 
 Note that it is one of functions which will be applied to list of MSGS and the
-result of this function will be used after"
-  (when msgs
+result of this function will be used after.  See `tg-inbox-sync-post-hook'"
+  (when tg-inbox-msgs
     (with-temp-buffer
       ;; insert the sync time to this temp buffer
       (thread-last
-        (last msgs)
+        (last tg-inbox-msgs)
         car
         (alist-get 'date)
         number-to-string
         insert)
       ;; write new info
       (write-region (point-min) (point-max)
-                    tg-inbox-sync-time-file)))
-  msgs)
+                    tg-inbox-sync-time-file))))
 
 (unless (file-exists-p tg-inbox-sync-time-file)
   (find-file-text tg-inbox-sync-time-file)
