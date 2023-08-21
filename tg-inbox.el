@@ -68,6 +68,7 @@ list of messages alists.")
 
 ;;; `org-mode' functions
 
+;;;###autoload
 (defun tg-inbox-sync ()
   "Insert all new messages from the Telegram Bot as `org-mode' tasks.
 
