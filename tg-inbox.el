@@ -66,6 +66,19 @@ list of messages alists.")
 (defvar tg-inbox-all-msgs '()
   "Like `tg-inbox-msgs', but here filtering is not happened.")
 
+(defvar tg-inbox-polling
+  (* 31  ; days
+     24  ; hours
+     60  ; minutes
+     60  ; seconds
+     )
+  "Here the ammount of seconds after which messages in Telegram will be deleted.
+
+Defaults to 1month, it means that when you send a message to the bot, then
+message will be located inside Telegram API database within 1month and when you
+call `tg-inbox-sync' it receives messages from Telegram API in the last month.
+After 1month")
+
 ;;; Public Commands
 
 ;;;###autoload
@@ -140,7 +153,7 @@ getUpdates"
 Note that each of result messages is alist which is parsed JSON from getUpdates
 Telgram API method answer"
   (thread-last
-    (tg-inbox--fetch-json "getUpdates")
+    (tg-inbox--fetch-json "getUpdates" `((polling . ,tg-inbox-polling)))
     (alist-get 'result)
     (mapcar 'cadr)
     ;; change the variable for hooks
@@ -163,20 +176,41 @@ Telgram API method answer"
     ;; also remove /start command
     (remove "/start")))
 
-(defun tg-inbox--fetch-json (method)
-  "Fetch a JSON from the Telegram API for tg-inbox-bot with a given METHOD."
-  (let ((url (tg-inbox--format-url method)))
+(defun tg-inbox--fetch-json (method &optional params)
+  "Fetch a JSON from the Telegram API for tg-inbox-bot with a given METHOD.
+
+Pass to the method data from an alist PARAMS."
+  (let ((url (tg-inbox--format-url method params)))
     (with-current-buffer (url-retrieve-synchronously url)
       (json-parse-string
        (buffer-substring (1+ url-http-end-of-headers)
                          (point-max))
        :object-type 'alist))))
 
-(defun tg-inbox--format-url (method)
-  "Format an URL to the Telegram API for tg-inbox-bot with a given METHOD."
-  (format "https://api.telegram.org/bot%s/%s"
+(defun tg-inbox--format-url (method &optional params)
+  "Format an URL to the Telegram API for tg-inbox-bot with a given METHOD.
+
+Pass to the method data from an alist PARAMS."
+  (format "https://api.telegram.org/bot%s/%s%s"
           tg-inbox-bot-token
-          method))
+          method
+          (tg-inbox--query-string params)))
+
+(defun tg-inbox--query-string (alist)
+  "Return a query-string from a given ALIST.
+
+It's a small wrapper around `url-build-query-string'.  Instead of the original
+one this function accept an ALIST as a query data and add & at the start of a
+string (if an ALIST isn't empty, otherwise it return empty string)."
+  (if (not alist)
+      ""
+    (concat
+     "?"
+     (url-build-query-string
+      (mapcar (lambda (bind)
+                ;; a cons '(a . b) to list '(a b)
+                (list (car bind) (cdr bind)))
+              alist)))))
 
 ;;; Internals
 
