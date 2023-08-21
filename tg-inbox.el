@@ -66,7 +66,7 @@ list of messages alists.")
 (defvar tg-inbox-all-msgs '()
   "Like `tg-inbox-msgs', but here filtering is not happened.")
 
-;;; `org-mode' functions
+;;; Public Commands
 
 ;;;###autoload
 (defun tg-inbox-sync ()
@@ -82,6 +82,16 @@ Insert these messages to the end of the current buffer."
           (tg-inbox--text-msgs))
     (run-hooks 'tg-inbox-sync-post-hook)
     tg-inbox-msgs))
+
+;;;###autoload
+(defun tg-inbox-create-internal-files ()
+  "Create some files in which `tg-inbox' needed for correct work."
+  (unless (file-exists-p tg-inbox-sync-time-file)
+    (find-file-text tg-inbox-sync-time-file)
+    (save-buffer)
+    (kill-buffer (find-file-text tg-inbox-sync-time-file))))
+
+;;; `org-mode' Internals
 
 (defun tg-inbox--insert-task-msg (msg)
   "Insert an `org-mode' heading as an inbox task with a MSG."
@@ -193,11 +203,6 @@ result of this function will be used after.  See `tg-inbox-sync-post-hook'"
       ;; write new info
       (write-region (point-min) (point-max)
                     tg-inbox-sync-time-file))))
-
-(unless (file-exists-p tg-inbox-sync-time-file)
-  (find-file-text tg-inbox-sync-time-file)
-  (save-buffer)
-  (kill-buffer (find-file-text tg-inbox-sync-time-file)))
 
 (provide 'tg-inbox)
 ;;; tg-inbox.el ends here
