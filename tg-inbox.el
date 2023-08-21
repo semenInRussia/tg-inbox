@@ -70,11 +70,23 @@ Inside this function you can use variable `tg-inbox-msgs' and
 (defvar tg-inbox-sync-pre-hook '()
   "List of functions which will be called before `tg-inbox-sync'.")
 
+(defvar tg-inbox-filter-msgs-functions '(tg-inbox--filter-new-msgs)
+  "The list of functions which should filter accepted messages from the bot.
+
+Each element of this variable should accept 1 argument messages and return
+filtered messages.  Each of accepted and result messages is alist with fields of
+struct Message from the offical API, see
+https://core.telegram.org/bots/api#message
+
+The filtered messages you can take with `tg-inbox--new-messages'.
+
+Defaults to one function which filter messages with the last `tg-inbox-sync'")
+
 (defvar tg-inbox-polling
-  (* 31  ; days in 1month
-     24  ; hours
-     60  ; minutes
-     60  ; seconds in 1month
+  (* 31                                 ; days in 1month
+     24                                 ; hours
+     60                                 ; minutes
+     60                                 ; seconds in 1month
      )
   "Here the ammount of seconds after which messages in Telegram will be deleted.
 
@@ -178,9 +190,9 @@ https://core.telegram.org/bots/api#message
     (mapcar 'cadr)
     ;; change the variable for hooks
     (setq tg-inbox-all-msgs)
-    ;; only new messages
-    (seq-filter
-     #'tg-inbox--is-new-msg-p)
+    ;; filter messages by time and other things
+    (tg-inbox--filter-with-hook
+     'tg-inbox-filter-msgs-functions)
     ;; change the variable for hooks
     (setq tg-inbox-msgs)))
 
@@ -240,6 +252,22 @@ string (if an ALIST isn't empty, otherwise it return empty string)."
                 (list (car bind) (cdr bind)))
               alist)))))
 
+;;; Filter Telegram Messages functions
+
+(defun tg-inbox--filter-new-msgs (msgs)
+  "Remove messages from MSGS which later than last sync time.
+
+The last sync time is stored inside file at `tg-inbox-sync-time-file' and
+updated after every either `tg-inbox-sync' or `tg-inbox--change-last-sync-time'
+call.
+
+Each of msgs is alist with the the schema of the Message struct
+https://core.telegram.org/bots/api#message
+
+It's one of `tg-inbox-filter-msgs-functions'."
+  (seq-filter #'tg-inbox--is-new-msg-p
+              msgs))
+
 ;;; Internals
 
 (defun tg-inbox--ensure-empty-line ()
@@ -265,6 +293,21 @@ result of this function will be used after.  See `tg-inbox-sync-post-hook'"
       ;; write new info
       (write-region (point-min) (point-max)
                     tg-inbox-sync-time-file))))
+
+(defun tg-inbox--filter-with-hook (hook &rest args)
+  "Run HOOK with the specified arguments ARGS.
+
+HOOK should be a symbol, a hook variable.  The value of HOOK may be nil, a
+function, or a list of functions.  Call each function in order with arguments
+ARGS, stopping at the first one that returns nil, and return nil.  Otherwise (if
+all functions return non-nil, or if there are no functions to call), return the
+final value."
+  (let ((funcs (ensure-list (eval hook)))
+        (result t))
+    (while (and funcs result)
+      (setq result (apply (car funcs) args))
+      (setq funcs (cdr funcs)))
+    result))
 
 (provide 'tg-inbox)
 ;;; tg-inbox.el ends here
