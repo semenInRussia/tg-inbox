@@ -132,6 +132,7 @@ getUpdates.
 \"New message\" means that the date of this messages is later than content of
 `tg-inbox-sync-time-file'.  The content of this file will be updated after every
 `tg-inbox-sync' call (or call `tg-inbox--change-last-sync-time')"
+  (declare (pure t) (side-effect-free t))
   ;; (message
   ;;  (message_id . 1)
   ;;  (from
@@ -189,6 +190,7 @@ https://core.telegram.org/bots/api#message
 \"New message\" means that the date of this messages is later than content of
 `tg-inbox-sync-time-file'.  The content of this file will be updated after every
 `tg-inbox-sync' call (or call `tg-inbox--change-last-sync-time')."
+  (declare (pure t) (side-effect-free t))
   (thread-last
     (tg-inbox--new-messages)
     (mapcar
@@ -215,6 +217,7 @@ Pass to the method data-alist PARAMS."
   "Format an URL to the Telegram API for tg-inbox-bot with a given METHOD.
 
 Pass to the method data-alist PARAMS."
+  (declare (pure t) (side-effect-free t))
   (format "https://api.telegram.org/bot%s/%s%s"
           tg-inbox-bot-token
           method
@@ -226,6 +229,7 @@ Pass to the method data-alist PARAMS."
 It's a small wrapper around `url-build-query-string'.  Instead of the original
 one this function accept an ALIST as a query data and add & at the start of a
 string (if an ALIST isn't empty, otherwise it return empty string)."
+  (declare (pure t) (side-effect-free t))
   (if (not alist)
       ""
     (concat
