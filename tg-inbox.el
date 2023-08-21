@@ -1,10 +1,9 @@
-;;; tg-inbox.el --- Sync inbox.org with Telegram chat -*- lexical-binding: t; -*-
+;;; tg-inbox.el --- Sync inbox.org with the Telegram chat -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023 semenInRussia
 
 ;; Author: semenInRussia <hrams205@gmail.com>
 ;; Version: 0.0.1
-;; Package-Requires: ((simple-httpd "1.5"))
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -24,7 +23,7 @@
 ;; Sync inbox.org with Telegram chat.
 ;;
 ;; You call `tg-inbox-sync' and messages from the bot will be inserted in the
-;; current buffer as `org-mode' headings with TODO label.
+;; current buffer as `org-mode' headings with TODO label.  WOW!
 
 ;;; Code:
 
@@ -46,31 +45,36 @@
   "The filename where `tg-inbox' stores the time of the last sync.")
 
 (defvar tg-inbox-bot-token "6580506179:AAGf7VtyNWy1GGseeXBdIwa6mFpziIWsi_U"
-  "Token of the bot on which you send your tasks.")
+  "Token of the bot on which you send your tasks.
+
+Please, generate your own token using @BotFather (https://telegram.me/BotFather)")
 
 (defvar tg-inbox-msgs '()
-  "List of just accepted messages from the Telegram API.
+  "List of just accepted messages from the Telegram Bot using Telegram API.
 
 It will be updated after every `tg-inbox-new-messages' call.  You can use this
-variable inside `tg-inbox-sync-post-hook'")
+variable inside `tg-inbox-sync-post-hook'.  Every message is alist with the
+fields of struct Message from the offical API
 
-(defvar tg-inbox-sync-post-hook '(tg-inbox--change-last-sync-time)
-  "List of functions which will be called after `tg-inbox-sync'.
-
-Inside this function you can use variable `tg-inbox-msgs' which have
-list of messages alists.")
-
-(defvar tg-inbox-sync-pre-hook '()
-  "List of functions which will be called before `tg-inbox-sync'.")
+https://core.telegram.org/bots/api#message")
 
 (defvar tg-inbox-all-msgs '()
   "Like `tg-inbox-msgs', but here filtering is not happened.")
 
+(defvar tg-inbox-sync-post-hook '(tg-inbox--change-last-sync-time)
+  "List of functions which will be called after `tg-inbox-sync'.
+
+Inside this function you can use variable `tg-inbox-msgs' and
+`tg-inbox-all-msgs' which have list of messages alists (see their docstrings).")
+
+(defvar tg-inbox-sync-pre-hook '()
+  "List of functions which will be called before `tg-inbox-sync'.")
+
 (defvar tg-inbox-polling
-  (* 31  ; days
+  (* 31  ; days in 1month
      24  ; hours
      60  ; minutes
-     60  ; seconds
+     60  ; seconds in 1month
      )
   "Here the ammount of seconds after which messages in Telegram will be deleted.
 
@@ -85,7 +89,11 @@ After 1month")
 (defun tg-inbox-sync ()
   "Insert all new messages from the Telegram Bot as `org-mode' tasks.
 
-Insert these messages to the end of the current buffer."
+Insert these messages to the end of the current buffer.  It tries to insert only
+new messages with look up content of `tg-inbox-sync-time-file' which will be
+updated after every `tg-inbox-sync' call.
+
+Return the list of inserted messages"
   (interactive)
   (save-excursion
     (goto-char (point-max))
@@ -98,7 +106,9 @@ Insert these messages to the end of the current buffer."
 
 ;;;###autoload
 (defun tg-inbox-create-internal-files ()
-  "Create some files in which `tg-inbox' needed for correct work."
+  "Create some files in which `tg-inbox' needed for correct work.
+
+Call it before the first `tg-inbox-sync' call"
   (unless (file-exists-p tg-inbox-sync-time-file)
     (find-file-text tg-inbox-sync-time-file)
     (save-buffer)
@@ -117,7 +127,11 @@ Insert these messages to the end of the current buffer."
   "Return non-nil if a given Telegram MSG is sent after the last sync time.
 
 MSG is an alist which was parsed from JSON returned with the Telegram API method
-getUpdates"
+getUpdates.
+
+\"New message\" means that the date of this messages is later than content of
+`tg-inbox-sync-time-file'.  The content of this file will be updated after every
+`tg-inbox-sync' call (or call `tg-inbox--change-last-sync-time')"
   ;; (message
   ;;  (message_id . 1)
   ;;  (from
@@ -151,20 +165,30 @@ getUpdates"
   "Return a list of new messages within the Telegram bot.
 
 Note that each of result messages is alist which is parsed JSON from getUpdates
-Telgram API method answer"
+Telgram API method answer.  See the schema of the Message struct here:
+https://core.telegram.org/bots/api#message
+
+\"New message\" means that the date of this messages is later than content of
+`tg-inbox-sync-time-file'.  The content of this file will be updated after every
+`tg-inbox-sync' call (or call `tg-inbox--change-last-sync-time')."
   (thread-last
     (tg-inbox--fetch-json "getUpdates" `((polling . ,tg-inbox-polling)))
     (alist-get 'result)
     (mapcar 'cadr)
     ;; change the variable for hooks
     (setq tg-inbox-all-msgs)
+    ;; only new messages
     (seq-filter
      #'tg-inbox--is-new-msg-p)
     ;; change the variable for hooks
     (setq tg-inbox-msgs)))
 
 (defun tg-inbox--text-msgs ()
-  "Return a list of strings: new messages within the Telegram bot."
+  "Return a list of strings: new messages within the Telegram bot.
+
+\"New message\" means that the date of this messages is later than content of
+`tg-inbox-sync-time-file'.  The content of this file will be updated after every
+`tg-inbox-sync' call (or call `tg-inbox--change-last-sync-time')."
   (thread-last
     (tg-inbox--new-messages)
     (mapcar
@@ -179,7 +203,7 @@ Telgram API method answer"
 (defun tg-inbox--fetch-json (method &optional params)
   "Fetch a JSON from the Telegram API for tg-inbox-bot with a given METHOD.
 
-Pass to the method data from an alist PARAMS."
+Pass to the method data-alist PARAMS."
   (let ((url (tg-inbox--format-url method params)))
     (with-current-buffer (url-retrieve-synchronously url)
       (json-parse-string
@@ -190,7 +214,7 @@ Pass to the method data from an alist PARAMS."
 (defun tg-inbox--format-url (method &optional params)
   "Format an URL to the Telegram API for tg-inbox-bot with a given METHOD.
 
-Pass to the method data from an alist PARAMS."
+Pass to the method data-alist PARAMS."
   (format "https://api.telegram.org/bot%s/%s%s"
           tg-inbox-bot-token
           method
