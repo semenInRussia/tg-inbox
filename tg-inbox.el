@@ -52,7 +52,7 @@ Please, generate your own token using @BotFather (https://telegram.me/BotFather)
 (defvar tg-inbox-msgs '()
   "List of just accepted messages from the Telegram Bot using Telegram API.
 
-It will be updated after every `tg-inbox-new-messages' call.  You can use this
+It will be updated after every `tg-inbox--new-msgs' call.  You can use this
 variable inside `tg-inbox-sync-post-hook'.  Every message is alist with the
 fields of struct Message from the offical API
 
@@ -174,7 +174,7 @@ getUpdates.
     (> (alist-get 'date msg)
        last-sync-time)))
 
-(defun tg-inbox--new-messages ()
+(defun tg-inbox--new-msgs ()
   "Return a list of new messages within the Telegram bot.
 
 Note that each of result messages is alist which is parsed JSON from getUpdates
@@ -204,7 +204,7 @@ https://core.telegram.org/bots/api#message
 `tg-inbox-sync' call (or call `tg-inbox--change-last-sync-time')."
   (declare (pure t) (side-effect-free t))
   (thread-last
-    (tg-inbox--new-messages)
+    (tg-inbox--new-msgs)
     (mapcar
      (apply-partially #'alist-get 'text))
     ;; remove nil-values, text is nil if the message is emoji or file
