@@ -105,6 +105,9 @@ Insert these messages to the end of the current buffer.  It tries to insert only
 new messages with look up content of `tg-inbox-sync-time-file' which will be
 updated after every `tg-inbox-sync' call.
 
+Before and after insertion of new messages `tg-inbox' run hooks
+`tg-inbox-sync-pre-hook' and `tg-inbox-sync-post-hook' respectively
+
 Return the list of inserted messages"
   (interactive)
   (save-excursion
@@ -134,6 +137,33 @@ Call it before the first `tg-inbox-sync' call"
   (newline))
 
 ;;; Telegram API Internals
+
+(defun tg-inbox--msg-to-last-chat (msg)
+  "Send a text MSG to the chat from where was accepted the last user msg.
+
+You can use it inside `tg-inbox-sync-pre-hook' and `tg-inbox-sync-post-hook'
+hooks or after `tg-inbox--new-msgs'.  NOTE that if messages didn't accepted
+then the last chat it can't be detected"
+  (tg-inbox--send-msg msg
+                      (tg-inbox--last-chat-id)))
+
+(defun tg-inbox--last-chat-id ()
+  "Return the chat ID from where was accepted the last user msg.
+
+You can use it inside `tg-inbox-sync-pre-hook' and `tg-inbox-sync-post-hook'
+hooks or after `tg-inbox--new-msgs'.  NOTE that if messages didn't accepted
+then the last chat it can't be detected the result is nil value"
+  (thread-last
+    (last tg-inbox-msgs)
+    (car)
+    (alist-get 'chat)
+    (alist-get 'id)))
+
+(defun tg-inbox--send-msg (msg chat-id)
+  "Send a text MSG to the chat with CHAT-ID."
+  (tg-inbox--fetch-json "sendMessage"
+                        `((chat_id . ,chat-id)
+                          (text . ,msg))))
 
 (defun tg-inbox--is-new-msg-p (msg)
   "Return non-nil if a given Telegram MSG is sent after the last sync time.
@@ -187,7 +217,9 @@ https://core.telegram.org/bots/api#message
   (thread-last
     (tg-inbox--fetch-json "getUpdates" `((polling . ,tg-inbox-polling)))
     (alist-get 'result)
-    (mapcar 'cadr)
+    (print)
+    (mapcar
+     (apply-partially #'alist-get 'message))
     ;; change the variable for hooks
     (setq tg-inbox-all-msgs)
     ;; filter messages by time and other things
@@ -239,7 +271,7 @@ Pass to the method data-alist PARAMS."
   "Return a query-string from a given ALIST.
 
 It's a small wrapper around `url-build-query-string'.  Instead of the original
-one this function accept an ALIST as a query data and add & at the start of a
+one this function accept an ALIST as a query data and add ? at the start of a
 string (if an ALIST isn't empty, otherwise it return empty string)."
   (declare (pure t) (side-effect-free t))
   (if (not alist)
@@ -267,6 +299,26 @@ https://core.telegram.org/bots/api#message
 It's one of `tg-inbox-filter-msgs-functions'."
   (seq-filter #'tg-inbox--is-new-msg-p
               msgs))
+
+;;; Some Optional Hooks
+
+(defun tg-inbox-maybe-send-done-msg ()
+  "Send to the chat message that syncing was done if messages was accepted.
+
+This is a hook to `tg-inbox-sync-post-hook', but can be useful also outside it,
+if you call `tg-inbox--new-msgs' before
+
+If you need that the bot answers on syncing messages, that add this function as
+hook to `tg-inbox-sync-post-hook' using anything like the following line:
+
+\(add-hook \\='tg-inbox-sync-post-hook #\\='tg-inbox-maybe-send-done-msg)
+
+Now, when you send some messages to the bot and call `tg-inbox-sync' the bot
+tell \"Done\""
+  (when tg-inbox-msgs
+    (tg-inbox--msg-to-last-chat "Done...")
+    (tg-inbox--msg-to-last-chat (format "%s messages was synchronized"
+                                        (length tg-inbox-msgs)))))
 
 ;;; Internals
 
