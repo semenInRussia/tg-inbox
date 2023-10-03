@@ -124,10 +124,11 @@ Return the list of inserted messages"
   "Create some files in which `tg-inbox' needed for correct work.
 
 Call it before the first `tg-inbox-sync' call"
+  (interactive)
   (unless (file-exists-p tg-inbox-sync-time-file)
-    (find-file-text tg-inbox-sync-time-file)
+    (find-file tg-inbox-sync-time-file)
     (save-buffer)
-    (kill-buffer (find-file-text tg-inbox-sync-time-file))))
+    (kill-buffer (find-file tg-inbox-sync-time-file))))
 
 ;;; `org-mode' Internals
 
